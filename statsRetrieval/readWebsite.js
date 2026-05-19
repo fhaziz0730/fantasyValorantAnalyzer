@@ -1,6 +1,12 @@
 import puppeteer from "puppeteer";
-
-function transformRawStringsToPlayers(
+import fs from "fs";
+import {
+  getHistoricalLogStrings,
+  getOpponentTeamStrings,
+  getRawPlayerStrings,
+  getRawTeamStrings,
+} from "./getStrings.js";
+export function transformRawStringsToPlayers(
   rawPlayerStrings,
   rawTeamStrings,
   rawHistoricalLogStrings,
@@ -37,6 +43,15 @@ function transformRawStringsToPlayers(
         historicalLog[i][j] = Number(historicalLog[i][j]);
       }
     }
+    historicalLog.forEach(
+      (log, index) =>
+        (historicalLog[index] = {
+          killPoints: log[0],
+          mapPoints: log[1],
+          bonusPoints: log[2],
+          totalPoints: log[3],
+        }),
+    );
     players.push({
       name: name,
       role: role,
@@ -53,43 +68,7 @@ function transformRawStringsToPlayers(
   return players;
 }
 
-async function getRawPlayerStrings(page) {
-  //retrieve player information (except team)
-  let playerElements = await page.$$("tr.group");
-  let rawPlayerStrings = [];
-  for (let element of playerElements) {
-    rawPlayerStrings.push(await page.evaluate((el) => el.innerText, element));
-  }
-  return rawPlayerStrings;
-}
-async function getRawTeamStrings(page) {
-  //retrieve team names for each player
-  let teamElements = await page.$$("div.flex.justify-center");
-  let rawTeamStrings = [];
-  for (let element of teamElements) {
-    rawTeamStrings.push(await page.evaluate((el) => el.title, element));
-  }
-  return rawTeamStrings;
-}
-async function getHistoricalLogStrings(page, numPlayers) {
-  let rawHistoricalLogStrings = [];
-  for (let i = 1; i < numPlayers + 1; i++) {
-    await page.waitForSelector(`tr.group:nth-child(${i})`);
-    await page.click(`tr.group:nth-child(${i})`);
-    await page.waitForSelector(
-      `table.w-full:nth-child(2) > tbody:nth-child(2)`,
-    );
-    let rawHistoricalLogElement = await page.$(
-      `table.w-full:nth-child(2) > tbody:nth-child(2)`,
-    );
-    rawHistoricalLogStrings.push(
-      await page.evaluate((el) => el.innerText, rawHistoricalLogElement),
-    );
-    await page.click("button.absolute");
-  }
-  return rawHistoricalLogStrings;
-}
-async function main() {
+export async function main() {
   //open a headless chrome browser
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
@@ -110,6 +89,13 @@ async function main() {
     page,
     rawPlayerStrings.length,
   );
+  console.log("Getting opponent teams");
+  let rawOpponentTeamStrings = await getOpponentTeamStrings(
+    page,
+    rawPlayerStrings.length,
+  );
+  console.log(rawOpponentTeamStrings);
+  await browser.close();
   //transform the raw strings into an array of player objects
   let players = transformRawStringsToPlayers(
     rawPlayerStrings,
@@ -118,7 +104,14 @@ async function main() {
   );
   console.log(players[0]);
   console.log(players.length);
-  await browser.close();
+  fs.writeFile(
+    "myjsonfile.json",
+    JSON.stringify(players), //change your variable name here instead of myObject (if needed)
+    (err) => {
+      if (err) throw err;
+      console.log("complete");
+    },
+  );
 }
 
 await main();
